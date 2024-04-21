@@ -13,8 +13,10 @@
     }
     SubShader
     {
-        Tags { "Queue" = "Geometry" "IgnoreProjector" = "True"  "RenderType"="Geometry" }
+        Tags { "Queue" = "Geometry" "IgnoreProjector" = "True"  "RenderType"="Geometry"  "RenderPipeline" = "UniversalPipeline"}
+        
         LOD 200
+
 
         CGPROGRAM
         // Physically based Standard lighting model, and enable shadows on all light types
