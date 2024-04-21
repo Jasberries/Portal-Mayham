@@ -52,7 +52,7 @@ public class PortalTraveller : MonoBehaviour {
         var renderers = g.GetComponentsInChildren<MeshRenderer> ();
         var matList = new List<Material> ();
         foreach (var renderer in renderers) {
-            foreach (var mat in renderer.materials) {
+            foreach (var mat in renderer.sharedMaterials) {
                 matList.Add (mat);
             }
         }
