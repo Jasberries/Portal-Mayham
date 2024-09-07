@@ -12,6 +12,8 @@ using UnityEditorInternal;
 // -> Project Settings -> Player -> Other Settings -> Scripting Define Symbols
 #region Define Cinemachine
 
+// Creates a Scripting Define Symbols (CINEMACHINE_INCLUDED)
+
 [InitializeOnLoad]
 public static class CinemachineDefineChecker
 {
@@ -55,6 +57,7 @@ public static class CinemachineDefineChecker
 [RequireComponent(typeof(Rigidbody), typeof(CapsuleCollider))]
 public class FirstPersonController : MonoBehaviour
 {
+    // Internal Variables
     private Rigidbody rb;
     private CapsuleCollider playerCollider;
     private InputManager inputManager;
@@ -62,13 +65,11 @@ public class FirstPersonController : MonoBehaviour
     #region Camera Movement Variables
 
     public bool useCinemachine;
-
 #if CINEMACHINE_INCLUDED
     public CinemachineVirtualCamera playerVirtualCamera;
 #endif
 
     public Camera playerCamera;
-
     private ICustomCamera activeCamera;
 
     public float fov = 60f;
@@ -187,6 +188,7 @@ public class FirstPersonController : MonoBehaviour
 
     #region Camera Interface
 
+    // Creates a camera Interface so that you can use both the normal camera and cinemachine
     private interface ICustomCamera
     {
         Transform Transform();
