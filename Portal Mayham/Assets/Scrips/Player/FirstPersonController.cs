@@ -8,43 +8,42 @@ using UnityEngine.UI;
 using UnityEditor;
 using UnityEditorInternal;
 
+// IMPORTANT! If you remove the Cinemachine package, you need to Remove CINEMACHINE_INCLUDED in Edit
+// -> Project Settings -> Player -> Other Settings -> Scripting Define Symbols
 #region Define Cinemachine
 
 [InitializeOnLoad]
 public static class CinemachineDefineChecker
 {
-    // Static constructor to check Cinemachine on load
     static CinemachineDefineChecker()
     {
-        AddCinemachineDefineSymbol();
+        CheckAndUpdateDefineSymbol();
     }
 
-    private static void AddCinemachineDefineSymbol()
+    private static void CheckAndUpdateDefineSymbol()
     {
-        // Check if the Cinemachine assembly is loaded
+        // Check if Cinemachine is installed by verifying the type exists
         bool isCinemachineInstalled = Type.GetType("Cinemachine.CinemachineVirtualCamera, Cinemachine") != null;
 
-        // Get current scripting symbols for the current build target group
-        var currentSymbols =
-            PlayerSettings.GetScriptingDefineSymbolsForGroup(EditorUserBuildSettings.selectedBuildTargetGroup);
+        // Get current scripting symbols for the selected build target group
+        var buildTargetGroup = EditorUserBuildSettings.selectedBuildTargetGroup;
+        var currentSymbols = PlayerSettings.GetScriptingDefineSymbolsForGroup(buildTargetGroup);
 
+        // If Cinemachine is installed and the symbol is not present, add it
         if (isCinemachineInstalled && !currentSymbols.Contains("CINEMACHINE_INCLUDED"))
         {
-            // Add CINEMACHINE_INCLUDED to the scripting define symbols if it's not already present
             PlayerSettings.SetScriptingDefineSymbolsForGroup(
-                EditorUserBuildSettings.selectedBuildTargetGroup,
+                buildTargetGroup,
                 currentSymbols + ";CINEMACHINE_INCLUDED"
             );
-            Debug.Log("Cinemachine is installed, CINEMACHINE_INCLUDED symbol added.");
+            Debug.Log("CINEMACHINE_INCLUDED symbol added.");
         }
+        // If Cinemachine is not installed and the symbol is present, remove it
         else if (!isCinemachineInstalled && currentSymbols.Contains("CINEMACHINE_INCLUDED"))
         {
-            // Remove CINEMACHINE_INCLUDED if Cinemachine is uninstalled
-            PlayerSettings.SetScriptingDefineSymbolsForGroup(
-                EditorUserBuildSettings.selectedBuildTargetGroup,
-                currentSymbols.Replace("CINEMACHINE_INCLUDED", "")
-            );
-            Debug.Log("Cinemachine is not installed, CINEMACHINE_INCLUDED symbol removed.");
+            currentSymbols = currentSymbols.Replace("CINEMACHINE_INCLUDED", "").Replace(";;", ";").TrimEnd(';');
+            PlayerSettings.SetScriptingDefineSymbolsForGroup(buildTargetGroup, currentSymbols);
+            Debug.Log("CINEMACHINE_INCLUDED symbol removed.");
         }
     }
 }
