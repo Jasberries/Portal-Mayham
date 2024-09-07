@@ -692,7 +692,7 @@ Light:
   m_RenderMode: 0
   m_CullingMask:
     serializedVersion: 2
-    m_Bits: 247
+    m_Bits: 119
   m_RenderingLayerMask: 1
   m_Lightmapping: 4
   m_LightShadowCasterMode: 0
@@ -2065,6 +2065,16 @@ PrefabInstance:
       propertyPath: linkedPortal
       value: 
       objectReference: {fileID: 1387693960}
+    - target: {fileID: 4205714879578628501, guid: bfcb13c8b95e6411d8174fbe153e4bb4,
+        type: 3}
+      propertyPath: nearClipLimit
+      value: 0.1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4205714879578628501, guid: bfcb13c8b95e6411d8174fbe153e4bb4,
+        type: 3}
+      propertyPath: nearClipOffset
+      value: 0.023
+      objectReference: {fileID: 0}
     - target: {fileID: 4205714879578628506, guid: bfcb13c8b95e6411d8174fbe153e4bb4,
         type: 3}
       propertyPath: m_LocalPosition.x
@@ -2589,11 +2599,11 @@ MeshCollider:
     serializedVersion: 2
     m_Bits: 0
   m_LayerOverridePriority: 0
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 5
-  m_Convex: 0
+  m_Convex: 1
   m_CookingOptions: 30
   m_Mesh: {fileID: 10209, guid: 0000000000000000e000000000000000, type: 0}
 --- !u!23 &2014243643
