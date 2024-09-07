@@ -3,14 +3,57 @@ using System;
 using Cinemachine;
 #endif
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
-
 #if UNITY_EDITOR
 using UnityEditor;
 using UnityEditorInternal;
+
+#region Define Cinemachine
+
+[InitializeOnLoad]
+public static class CinemachineDefineChecker
+{
+    // Static constructor to check Cinemachine on load
+    static CinemachineDefineChecker()
+    {
+        AddCinemachineDefineSymbol();
+    }
+
+    private static void AddCinemachineDefineSymbol()
+    {
+        // Check if the Cinemachine assembly is loaded
+        bool isCinemachineInstalled = Type.GetType("Cinemachine.CinemachineVirtualCamera, Cinemachine") != null;
+
+        // Get current scripting symbols for the current build target group
+        var currentSymbols =
+            PlayerSettings.GetScriptingDefineSymbolsForGroup(EditorUserBuildSettings.selectedBuildTargetGroup);
+
+        if (isCinemachineInstalled && !currentSymbols.Contains("CINEMACHINE_INCLUDED"))
+        {
+            // Add CINEMACHINE_INCLUDED to the scripting define symbols if it's not already present
+            PlayerSettings.SetScriptingDefineSymbolsForGroup(
+                EditorUserBuildSettings.selectedBuildTargetGroup,
+                currentSymbols + ";CINEMACHINE_INCLUDED"
+            );
+            Debug.Log("Cinemachine is installed, CINEMACHINE_INCLUDED symbol added.");
+        }
+        else if (!isCinemachineInstalled && currentSymbols.Contains("CINEMACHINE_INCLUDED"))
+        {
+            // Remove CINEMACHINE_INCLUDED if Cinemachine is uninstalled
+            PlayerSettings.SetScriptingDefineSymbolsForGroup(
+                EditorUserBuildSettings.selectedBuildTargetGroup,
+                currentSymbols.Replace("CINEMACHINE_INCLUDED", "")
+            );
+            Debug.Log("Cinemachine is not installed, CINEMACHINE_INCLUDED symbol removed.");
+        }
+    }
+}
+
+#endregion
+
 #endif
 
+[RequireComponent(typeof(Rigidbody), typeof(CapsuleCollider))]
 public class FirstPersonController : MonoBehaviour
 {
     private Rigidbody rb;
@@ -20,15 +63,15 @@ public class FirstPersonController : MonoBehaviour
     #region Camera Movement Variables
 
     public bool useCinemachine;
-    
-    #if CINEMACHINE_INCLUDED
-    public CinemachineVirtualCamera playerVCamera;
-    #endif
+
+#if CINEMACHINE_INCLUDED
+    public CinemachineVirtualCamera playerVirtualCamera;
+#endif
 
     public Camera playerCamera;
 
     private ICustomCamera activeCamera;
-    
+
     public float fov = 60f;
     public bool invertCamera = false;
     public float mouseSensitivity = 2f;
@@ -120,7 +163,6 @@ public class FirstPersonController : MonoBehaviour
     public float crouchSpeed = .5f;
     public Collider propCollider;
 
-
     // Internal Variables
     private bool isCrouched = false;
     private float standingHeight;
@@ -143,71 +185,69 @@ public class FirstPersonController : MonoBehaviour
     private float timer = 0;
 
     #endregion
-    
+
     #region Camera Interface
-    public interface ICustomCamera
+
+    private interface ICustomCamera
     {
-        Vector3 GetCameraPosition();
+        Transform Transform();
         void SetCameraFOV(float fov);
-
         float GetFOV();
-
-        void SetLocalEulerAngles(Vector3 angel);
     }
 
-    public class RegularCamera : ICustomCamera
+    private class RegularCamera : ICustomCamera
     {
-        private Camera camera;
+        private readonly Camera playerCamera;
 
         public RegularCamera(Camera cam)
         {
-            camera = cam;
+            playerCamera = cam;
         }
 
-        public Vector3 GetCameraPosition()
+        public Transform Transform()
         {
-            return camera.transform.localPosition;
+            return playerCamera.transform;
         }
 
         public void SetCameraFOV(float fov)
         {
-            camera.fieldOfView = fov;
+            playerCamera.fieldOfView = fov;
         }
 
         public float GetFOV()
         {
-            return camera.fieldOfView;
-        }
-
-        public void SetLocalEulerAngles(Vector3 angel)
-        {
-            camera.transform.localEulerAngles = angel;
+            return playerCamera.fieldOfView;
         }
     }
 
 #if CINEMACHINE_INCLUDED
-using Cinemachine;
 
-public class CinemachineCamera : ICustomCamera
-{
-    private CinemachineVirtualCamera vCam;
-
-    public CinemachineCamera(CinemachineVirtualCamera virtualCamera)
+    private class CinemachineCamera : ICustomCamera
     {
-        vCam = virtualCamera;
-    }
+        private readonly CinemachineVirtualCamera vCam;
 
-    public Vector3 GetCameraPosition()
-    {
-        return vCam.transform.localPosition;
-    }
+        public CinemachineCamera(CinemachineVirtualCamera virtualCamera)
+        {
+            vCam = virtualCamera;
+        }
 
-    public void SetCameraFOV(float fov)
-    {
-        vCam.m_Lens.FieldOfView = fov;
+        public Transform Transform()
+        {
+            return vCam.transform;
+        }
+
+        public void SetCameraFOV(float fov)
+        {
+            vCam.m_Lens.FieldOfView = fov;
+        }
+
+        public float GetFOV()
+        {
+            return vCam.m_Lens.FieldOfView;
+        }
     }
-}
 #endif
+
     #endregion
 
 
@@ -216,29 +256,27 @@ public class CinemachineCamera : ICustomCamera
         rb = GetComponent<Rigidbody>();
         playerCollider = GetComponent<CapsuleCollider>();
         currentHeight = standingHeight = playerCollider.height;
-        
+
         if (useCinemachine)
         {
-        #if CINEMACHINE_INCLUDED
+#if CINEMACHINE_INCLUDED
             activeCamera = new CinemachineCamera(playerVirtualCamera);
-        #endif
+#endif
         }
         else
         {
             activeCamera = new RegularCamera(playerCamera);
         }
-        
-        standingCameraHeight = activeCamera.GetCameraPosition();
-        
-        
-        
+
+        inputManager = FindObjectOfType<InputManager>();
+
+        standingCameraHeight = activeCamera.Transform().localPosition;
+
         currentSpeed = walkSpeed;
 
         // Set internal variables
         activeCamera.SetCameraFOV(fov);
         jointOriginalPos = joint.localPosition;
-
-        mouseSensitivity = PlayerPrefs.GetFloat("sensitivity", 1);
 
         if (!unlimitedSprint)
         {
@@ -258,7 +296,7 @@ public class CinemachineCamera : ICustomCamera
     {
         inputManager.LockCursor(true);
         inputManager.DisablePlayerLook(false);
-        
+
         #region Sprint Bar
 
         sprintBarCG = GetComponentInChildren<CanvasGroup>();
@@ -284,8 +322,8 @@ public class CinemachineCamera : ICustomCamera
         }
         else
         {
-            sprintBarBG.gameObject.SetActive(false);
-            sprintBar.gameObject.SetActive(false);
+            if (sprintBarBG != null) sprintBarBG.gameObject.SetActive(false);
+            if (sprintBarBG != null) sprintBar.gameObject.SetActive(false);
         }
 
         #endregion
@@ -297,7 +335,6 @@ public class CinemachineCamera : ICustomCamera
     {
         #region Camera
 
-        
         // Control camera movement
         if (inputManager.CanLook)
         {
@@ -318,7 +355,7 @@ public class CinemachineCamera : ICustomCamera
             pitch = Mathf.Clamp(pitch, -maxLookAngle, maxLookAngle);
 
             transform.localEulerAngles = new Vector3(0, yaw, 0);
-            activeCamera.SetLocalEulerAngles(new Vector3(pitch, 0, 0));
+            activeCamera.Transform().localEulerAngles = new Vector3(pitch, 0, 0);
         }
 
         #region Camera Zoom
@@ -374,7 +411,8 @@ public class CinemachineCamera : ICustomCamera
             if (isSprinting)
             {
                 isZoomed = false;
-                activeCamera.SetCameraFOV(Mathf.Lerp(activeCamera.GetFOV(), sprintFOV, sprintFOVStepTime * Time.deltaTime));
+                activeCamera.SetCameraFOV(Mathf.Lerp(activeCamera.GetFOV(), sprintFOV,
+                    sprintFOVStepTime * Time.deltaTime));
 
                 // Drain sprint remaining while sprinting
                 if (!unlimitedSprint && (Math.Abs(velocity.x - 0.01f) > 0.04f || Math.Abs(velocity.z - 0.01f) > 0.04f))
@@ -391,12 +429,7 @@ public class CinemachineCamera : ICustomCamera
             {
                 // Regain sprint while not sprinting
                 sprintRemaining = Mathf.Clamp(sprintRemaining += 1 * Time.deltaTime, 0, sprintDuration);
-                if (useCinemachine)
-                {
-                    
-                }
-                playerVirtualCamera.m_Lens.FieldOfView =
-                    Mathf.Lerp(playerVirtualCamera.m_Lens.FieldOfView, fov, sprintFOVStepTime * Time.deltaTime);
+                activeCamera.SetCameraFOV(Mathf.Lerp(activeCamera.GetFOV(), fov, sprintFOVStepTime * Time.deltaTime));
             }
 
             // Handles sprint cooldown 
@@ -433,7 +466,7 @@ public class CinemachineCamera : ICustomCamera
         }
 
         #endregion
-        
+
 
         if (enableHeadBob)
         {
@@ -448,7 +481,7 @@ public class CinemachineCamera : ICustomCamera
         Vector2 playerInput = inputManager.MoveValue;
 
         if (inputManager.DisableAllMovement) return;
-        
+
         stepsSinceLastGrounded += 1;
         velocity = rb.velocity;
         if (IsGrounded || SnapToGround())
@@ -462,9 +495,10 @@ public class CinemachineCamera : ICustomCamera
         AdjustVelocity();
         rb.velocity = velocity;
         ClearState();
+
         #endregion
     }
-    
+
     // Sets isGrounded based on a raycast sent straight down from the player object
 
     #region GroundCheck
@@ -497,7 +531,7 @@ public class CinemachineCamera : ICustomCamera
     private void Jump()
     {
         if (!enableJump || !IsGrounded) return;
-        
+
         // Adds force to the player rigidbody to jump
         if (IsGrounded && !isCrouched)
         {
@@ -547,7 +581,7 @@ public class CinemachineCamera : ICustomCamera
 
             isSprinting = false;
 
-            if (hideBarWhenFull && Mathf.Approximately(sprintRemaining, sprintDuration))
+            if (hideBarWhenFull && Mathf.Approximately(sprintRemaining, sprintDuration) && sprintBarCG != null)
             {
                 sprintBarCG.alpha -= 3 * Time.deltaTime;
             }
@@ -611,13 +645,14 @@ public class CinemachineCamera : ICustomCamera
     private void UpdateHeight(float targetHeight)
     {
         // Check if the current height is within 0.01f of the target height
-        currentHeight = Mathf.Abs(currentHeight - targetHeight) < 0.1f ? targetHeight :
-            Mathf.Lerp(currentHeight, targetHeight, crouchLerpSpeed * Time.deltaTime);
+        currentHeight = Mathf.Abs(currentHeight - targetHeight) < 0.1f
+            ? targetHeight
+            : Mathf.Lerp(currentHeight, targetHeight, crouchLerpSpeed * Time.deltaTime);
 
         // Adjust camera height based on current height
         Vector3 halfHeightDifference = new Vector3(0, (standingHeight - currentHeight) / 2, 0);
         Vector3 newCameraHeight = standingCameraHeight - halfHeightDifference;
-        playerVirtualCamera.transform.localPosition = newCameraHeight;
+        activeCamera.Transform().localPosition = newCameraHeight;
 
         // Adjust player collider height
         playerCollider.height = currentHeight;
@@ -645,10 +680,15 @@ public class CinemachineCamera : ICustomCamera
             colliderY = -0.5f;
         }
 
-        propCollider.transform.localScale =
-            Vector3.Lerp(propCollider.transform.localScale, new Vector3(1, colliderScale, 1), crouchLerpSpeed * Time.deltaTime);
-        propCollider.transform.localPosition =
-            Vector3.Lerp(propCollider.transform.localPosition, new Vector3(0, colliderY, 0), crouchLerpSpeed * Time.deltaTime);
+        if (propCollider != null)
+        {
+            propCollider.transform.localScale =
+                Vector3.Lerp(propCollider.transform.localScale, new Vector3(1, colliderScale, 1),
+                    crouchLerpSpeed * Time.deltaTime);
+            propCollider.transform.localPosition =
+                Vector3.Lerp(propCollider.transform.localPosition, new Vector3(0, colliderY, 0),
+                    crouchLerpSpeed * Time.deltaTime);
+        }
     }
 
 
@@ -659,8 +699,9 @@ public class CinemachineCamera : ICustomCamera
 
     private void AdjustVelocity()
     {
-        Vector3 right = new Vector3(playerVirtualCamera.transform.right.x, 0, playerVirtualCamera.transform.right.z);
-        Vector3 forward = new Vector3(playerVirtualCamera.transform.forward.x, 0, playerVirtualCamera.transform.forward.z);
+        Vector3 right = new Vector3(activeCamera.Transform().right.x, 0, activeCamera.Transform().transform.right.z);
+        Vector3 forward = new Vector3(activeCamera.Transform().transform.forward.x, 0,
+            activeCamera.Transform().transform.forward.z);
 
         Vector3 xAxis = ProjectOnContactPlane(right).normalized;
         Vector3 zAxis = ProjectOnContactPlane(forward).normalized;
@@ -723,14 +764,23 @@ public class CinemachineCamera : ICustomCamera
 
     private void OnEnable()
     {
-       inputManager.Jump += Jump;
+        inputManager.Jump += Jump;
     }
 
     private void OnDisable()
     {
         inputManager.Jump -= Jump;
-
     }
+    // public override void Teleport (Transform fromPortal, Transform toPortal, Vector3 pos, Quaternion rot) {
+    //     transform.position = pos;
+    //     Vector3 eulerRot = rot.eulerAngles;
+    //     float delta = Mathf.DeltaAngle (smoothYaw, eulerRot.y);
+    //     yaw += delta;
+    //     smoothYaw += delta;
+    //     transform.eulerAngles = Vector3.up * smoothYaw;
+    //     velocity = toPortal.TransformVector (fromPortal.InverseTransformVector (velocity));
+    //     Physics.SyncTransforms ();
+    // }
 }
 
 // Custom Editor
@@ -743,7 +793,7 @@ public class FirstPersonControllerEditor : Editor
 
     private void OnEnable()
     {
-        fpc = (FirstPersonController)target;
+        fpc = (FirstPersonController) target;
         SerFPC = new SerializedObject(fpc);
     }
 
@@ -754,21 +804,44 @@ public class FirstPersonControllerEditor : Editor
         EditorGUILayout.Space();
         GUILayout.Label("Modular First Person Controller",
             new GUIStyle(GUI.skin.label)
-                { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold, fontSize = 16 });
+                {alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold, fontSize = 16});
         EditorGUILayout.Space();
-        
-        
+
+
         #region Camera Setup
 
         EditorGUILayout.LabelField("", GUI.skin.horizontalSlider);
         GUILayout.Label("Camera Setup",
             new GUIStyle(GUI.skin.label)
-                { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold, fontSize = 13 },
+                {alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold, fontSize = 13},
             GUILayout.ExpandWidth(true));
         EditorGUILayout.Space();
-        
-        fpc.playerVirtualCamera = (CinemachineVirtualCamera)EditorGUILayout.ObjectField(
-            new GUIContent("Camera", "Camera attached to the controller."), fpc.playerVirtualCamera, typeof(CinemachineVirtualCamera), true);
+
+#if CINEMACHINE_INCLUDED
+        fpc.useCinemachine = EditorGUILayout.ToggleLeft(
+            new GUIContent("Use Cinemachine", "Set the camera to use to cinemachine"),
+            fpc.useCinemachine);
+
+        if (fpc.useCinemachine)
+        {
+            fpc.playerVirtualCamera = (CinemachineVirtualCamera) EditorGUILayout.ObjectField(
+                new GUIContent("Camera", "Camera attached to the controller."), fpc.playerVirtualCamera,
+                typeof(CinemachineVirtualCamera), true);
+        }
+
+#endif
+
+        if (!fpc.useCinemachine)
+        {
+            fpc.playerCamera = (Camera) EditorGUILayout.ObjectField(
+                new GUIContent("Camera", "Camera attached to the controller."), fpc.playerCamera, typeof(Camera), true);
+        }
+
+        fpc.mouseSensitivity = EditorGUILayout.Slider(
+            new GUIContent("Mouse Sensitivity", "The Sensitivity if the Player and Camera rotation"),
+            fpc.mouseSensitivity,
+            0f, 10f);
+
         fpc.fov = EditorGUILayout.Slider(
             new GUIContent("Field of View", "The camera’s view angle. Changes the player camera directly."), fpc.fov,
             fpc.zoomFOV, 179f);
@@ -788,7 +861,7 @@ public class FirstPersonControllerEditor : Editor
 
         GUILayout.Label("Zoom",
             new GUIStyle(GUI.skin.label)
-                { alignment = TextAnchor.MiddleLeft, fontStyle = FontStyle.Bold, fontSize = 13 },
+                {alignment = TextAnchor.MiddleLeft, fontStyle = FontStyle.Bold, fontSize = 13},
             GUILayout.ExpandWidth(true));
 
         fpc.enableZoom = EditorGUILayout.ToggleLeft(
@@ -817,7 +890,7 @@ public class FirstPersonControllerEditor : Editor
         EditorGUILayout.LabelField("", GUI.skin.horizontalSlider);
         GUILayout.Label("Movement Setup",
             new GUIStyle(GUI.skin.label)
-                { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold, fontSize = 13 },
+                {alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold, fontSize = 13},
             GUILayout.ExpandWidth(true));
         EditorGUILayout.Space();
 
@@ -857,7 +930,7 @@ public class FirstPersonControllerEditor : Editor
 
         GUILayout.Label("Sprint",
             new GUIStyle(GUI.skin.label)
-                { alignment = TextAnchor.MiddleLeft, fontStyle = FontStyle.Bold, fontSize = 13 },
+                {alignment = TextAnchor.MiddleLeft, fontStyle = FontStyle.Bold, fontSize = 13},
             GUILayout.ExpandWidth(true));
 
         fpc.enableSprint = EditorGUILayout.ToggleLeft(
@@ -913,12 +986,12 @@ public class FirstPersonControllerEditor : Editor
 
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.PrefixLabel(new GUIContent("Bar BG", "Object to be used as sprint bar background."));
-            fpc.sprintBarBG = (Image)EditorGUILayout.ObjectField(fpc.sprintBarBG, typeof(Image), true);
+            fpc.sprintBarBG = (Image) EditorGUILayout.ObjectField(fpc.sprintBarBG, typeof(Image), true);
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.PrefixLabel(new GUIContent("Bar", "Object to be used as sprint bar foreground."));
-            fpc.sprintBar = (Image)EditorGUILayout.ObjectField(fpc.sprintBar, typeof(Image), true);
+            fpc.sprintBar = (Image) EditorGUILayout.ObjectField(fpc.sprintBar, typeof(Image), true);
             EditorGUILayout.EndHorizontal();
 
 
@@ -946,7 +1019,7 @@ public class FirstPersonControllerEditor : Editor
 
         GUILayout.Label("Jump",
             new GUIStyle(GUI.skin.label)
-                { alignment = TextAnchor.MiddleLeft, fontStyle = FontStyle.Bold, fontSize = 13 },
+                {alignment = TextAnchor.MiddleLeft, fontStyle = FontStyle.Bold, fontSize = 13},
             GUILayout.ExpandWidth(true));
 
         fpc.enableJump =
@@ -967,7 +1040,7 @@ public class FirstPersonControllerEditor : Editor
 
         GUILayout.Label("Crouch",
             new GUIStyle(GUI.skin.label)
-                { alignment = TextAnchor.MiddleLeft, fontStyle = FontStyle.Bold, fontSize = 13 },
+                {alignment = TextAnchor.MiddleLeft, fontStyle = FontStyle.Bold, fontSize = 13},
             GUILayout.ExpandWidth(true));
 
         fpc.enableCrouch = EditorGUILayout.ToggleLeft(
@@ -995,7 +1068,7 @@ public class FirstPersonControllerEditor : Editor
         EditorGUILayout.BeginHorizontal();
         EditorGUILayout.PrefixLabel(new GUIContent("Prop Collider",
             "The Collider that will interact with the props to that the player can't walk on top if them"));
-        fpc.propCollider = (Collider)EditorGUILayout.ObjectField(fpc.propCollider, typeof(Collider), true);
+        fpc.propCollider = (Collider) EditorGUILayout.ObjectField(fpc.propCollider, typeof(Collider), true);
         EditorGUILayout.EndHorizontal();
         GUI.enabled = true;
 
@@ -1009,7 +1082,7 @@ public class FirstPersonControllerEditor : Editor
         EditorGUILayout.LabelField("", GUI.skin.horizontalSlider);
         GUILayout.Label("Head Bob Setup",
             new GUIStyle(GUI.skin.label)
-                { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold, fontSize = 13 },
+                {alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold, fontSize = 13},
             GUILayout.ExpandWidth(true));
         EditorGUILayout.Space();
 
@@ -1019,7 +1092,7 @@ public class FirstPersonControllerEditor : Editor
 
 
         GUI.enabled = fpc.enableHeadBob;
-        fpc.joint = (Transform)EditorGUILayout.ObjectField(
+        fpc.joint = (Transform) EditorGUILayout.ObjectField(
             new GUIContent("Camera Joint", "Joint object position is moved while head bob is active."), fpc.joint,
             typeof(Transform), true);
         fpc.bobSpeed =
@@ -1041,6 +1114,4 @@ public class FirstPersonControllerEditor : Editor
         }
     }
 }
-
 #endif
-

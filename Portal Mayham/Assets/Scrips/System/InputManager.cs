@@ -93,7 +93,7 @@ public class InputManager : MonoBehaviour, PlayerActionMap.IPlayerActions
 
     public void OnLook(InputAction.CallbackContext context)
     {
-        ViewValue = context.ReadValue<Vector2>() * PlayerPrefs.GetFloat("sensitivity");
+        ViewValue = context.ReadValue<Vector2>();
     }
 
     public void OnInteract(InputAction.CallbackContext context)
