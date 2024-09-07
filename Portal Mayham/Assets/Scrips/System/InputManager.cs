@@ -16,10 +16,11 @@ public class InputManager : MonoBehaviour, PlayerActionMap.IPlayerActions
     public bool Special { get; private set; }
     public bool DisableAllMovement { get; private set; }
     public bool CanLook { get; private set; }
+    
+    public bool Jump { get; private set; }
 
     public event Action Interacted;
     public event Action Pause;
-    public event Action Jump;
 
     private PlayerActionMap input;
 
@@ -119,10 +120,7 @@ public class InputManager : MonoBehaviour, PlayerActionMap.IPlayerActions
 
     public void OnJump(InputAction.CallbackContext context)
     {
-        if (context.performed)
-        {
-            Jump?.Invoke();
-        }
+        Jump = context.started;
     }
 
     public void OnCrouching(InputAction.CallbackContext context)

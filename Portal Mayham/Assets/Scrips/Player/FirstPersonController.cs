@@ -10,6 +10,7 @@ using UnityEditorInternal;
 
 // IMPORTANT! If you remove the Cinemachine package, you need to Remove CINEMACHINE_INCLUDED in Edit
 // -> Project Settings -> Player -> Other Settings -> Scripting Define Symbols
+
 #region Define Cinemachine
 
 // Creates a Scripting Define Symbols (CINEMACHINE_INCLUDED)
@@ -100,17 +101,16 @@ public class FirstPersonController : MonoBehaviour
     public bool playerCanMove = true;
     public float walkSpeed = 5f;
     public float maxAcceleration = 10f;
-    public float airControl = 5f;
-    public float maxGroundAngle = 25f;
+    public float maxGroundAngle = 25f, maxStairsAngle = 50f;
     public float groundSnapSpeed = 100f;
     public float probeDistance = 2f;
-    public LayerMask probeMask = -1;
+    public LayerMask probeMask = -1, stairsMask = -1;
 
     // Internal Variables
     private bool isWalking = false;
     private float currentSpeed;
-    private float minGroundDotProduct;
-    private Vector3 contactNormal;
+    private float minGroundDotProduct, minStairsDotProduct;
+    private Vector3 contactNormal, steepNormal;
     private Vector3 velocity, desiredVelocity;
 
     #region Sprint
@@ -145,12 +145,18 @@ public class FirstPersonController : MonoBehaviour
     #region Jump
 
     public bool enableJump = true;
+    public JumpEnum jumpState = JumpEnum.Nothing;
     public float jumpPower = 5f;
+    public int extraJumps = 0;
+    public float maxAirAcceleration = 5f;
 
     // Internal Variables
-    private int groundContactCount;
-    private int stepsSinceLastGrounded;
+    private int groundContactCount, steepContactCount;
+    private int stepsSinceLastGrounded, stepsSinceLastJump;
+    private bool desiredJump;
+    private int jumpPhase;
     private bool IsGrounded => groundContactCount > 0;
+    bool OnSteep => steepContactCount > 0;
 
     #endregion
 
@@ -222,7 +228,6 @@ public class FirstPersonController : MonoBehaviour
     }
 
 #if CINEMACHINE_INCLUDED
-
     private class CinemachineCamera : ICustomCamera
     {
         private readonly CinemachineVirtualCamera vCam;
@@ -251,6 +256,13 @@ public class FirstPersonController : MonoBehaviour
 
     #endregion
 
+    [Serializable, Flags]
+    public enum JumpEnum
+    {
+        Nothing,
+        WallJump,
+        AirJumps
+    }
 
     private void Awake()
     {
@@ -291,6 +303,7 @@ public class FirstPersonController : MonoBehaviour
     private void OnValidate()
     {
         minGroundDotProduct = Mathf.Cos(maxGroundAngle * Mathf.Deg2Rad);
+        minStairsDotProduct = Mathf.Cos(maxStairsAngle * Mathf.Deg2Rad);
     }
 
     void Start()
@@ -468,8 +481,9 @@ public class FirstPersonController : MonoBehaviour
 
         #endregion
 
+        desiredJump |= Input.GetButtonDown("Jump");
 
-        if (enableHeadBob)
+        if (enableHeadBob && IsGrounded)
         {
             HeadBob();
         }
@@ -484,20 +498,42 @@ public class FirstPersonController : MonoBehaviour
         if (inputManager.DisableAllMovement) return;
 
         stepsSinceLastGrounded += 1;
-        velocity = rb.velocity;
-        if (IsGrounded || SnapToGround())
-        {
-            stepsSinceLastGrounded = 0;
-            contactNormal.Normalize();
-        }
+        stepsSinceLastJump += 1;
+
+        UpdateState();
+
 
         Sprint();
         desiredVelocity = new Vector3(playerInput.x, 0f, playerInput.y) * currentSpeed;
         AdjustVelocity();
+        if (desiredJump)
+        {
+            desiredJump = false;
+            Jump();
+        }
+
         rb.velocity = velocity;
         ClearState();
 
         #endregion
+    }
+
+    void UpdateState()
+    {
+        velocity = rb.velocity;
+        if (IsGrounded || SnapToGround() || CheckSteepContacts())
+        {
+            stepsSinceLastGrounded = 0;
+            jumpPhase = 0;
+            if (groundContactCount > 1)
+            {
+                contactNormal.Normalize();
+            }
+        }
+        else
+        {
+            contactNormal = Vector3.up;
+        }
     }
 
     // Sets isGrounded based on a raycast sent straight down from the player object
@@ -516,29 +552,86 @@ public class FirstPersonController : MonoBehaviour
 
     private void EvaluateCollision(Collision collision)
     {
+        float minDot = GetMinDot(collision.gameObject.layer);
         for (int i = 0; i < collision.contactCount; i++)
         {
             Vector3 normal = collision.GetContact(i).normal;
-            if (normal.y >= minGroundDotProduct)
+            if (normal.y >= minDot)
             {
                 groundContactCount += 1;
                 contactNormal += normal;
             }
+            else if (normal.y > -0.01f)
+            {
+                steepContactCount += 1;
+                steepNormal += normal;
+            }
         }
+    }
+
+    bool CheckSteepContacts()
+    {
+        if (steepContactCount > 1)
+        {
+            steepNormal.Normalize();
+            if (steepNormal.y >= minGroundDotProduct)
+            {
+                groundContactCount = 1;
+                contactNormal = steepNormal;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     #endregion
 
     private void Jump()
     {
-        if (!enableJump || !IsGrounded) return;
+        if (!enableJump) return;
 
-        // Adds force to the player rigidbody to jump
-        if (IsGrounded && !isCrouched)
+        Vector3 jumpDirection;
+        if (IsGrounded)
         {
-            rb.AddForce(0f, jumpPower, 0f, ForceMode.Impulse);
-            groundContactCount = 0;
+            jumpDirection = contactNormal;
         }
+        else if (OnSteep)
+        {
+            jumpDirection = steepNormal;
+            jumpPhase = 0;
+        }
+        else if (extraJumps > 0 && jumpPhase <= extraJumps)
+        {
+            if (jumpPhase == 0)
+            {
+                jumpPhase = 1;
+            }
+
+            jumpDirection = contactNormal;
+        }
+        else
+        {
+            return;
+        }
+
+        stepsSinceLastJump = 0;
+        if (stepsSinceLastJump > 1)
+        {
+            jumpPhase = 0;
+        }
+
+        jumpPhase++;
+        float jumpSpeed = Mathf.Sqrt(-2f * Physics.gravity.y * jumpPower);
+        jumpDirection = (jumpDirection + Vector3.up).normalized;
+        float alignedSpeed = Vector3.Dot(velocity, jumpDirection);
+        if (alignedSpeed > 0f)
+        {
+            jumpSpeed = Mathf.Max(jumpSpeed - alignedSpeed, 0f);
+        }
+
+        velocity += jumpDirection * jumpSpeed;
+
 
         // When crouched and using toggle system, will uncrouch for a jump
         if (isCrouched && !holdToCrouch)
@@ -618,15 +711,20 @@ public class FirstPersonController : MonoBehaviour
         return targetHeight;
     }
 
+    float GetMinDot(int layer)
+    {
+        return (stairsMask & (1 << layer)) == 0 ? minGroundDotProduct : minStairsDotProduct;
+    }
+
     private bool SnapToGround()
     {
-        if (stepsSinceLastGrounded > 1 || velocity.magnitude > groundSnapSpeed)
+        if (stepsSinceLastGrounded > 1 || stepsSinceLastJump <= 2 || velocity.magnitude > groundSnapSpeed)
         {
             return false;
         }
 
         if (!Physics.Raycast(rb.position, Vector3.down, out RaycastHit hit, probeDistance, probeMask) ||
-            hit.normal.y < minGroundDotProduct)
+            hit.normal.y < GetMinDot(hit.collider.gameObject.layer))
         {
             return false;
         }
@@ -692,7 +790,6 @@ public class FirstPersonController : MonoBehaviour
         }
     }
 
-
     private Vector3 ProjectOnContactPlane(Vector3 vector)
     {
         return vector - contactNormal * Vector3.Dot(vector, contactNormal);
@@ -710,7 +807,7 @@ public class FirstPersonController : MonoBehaviour
         float currentX = Vector3.Dot(velocity, xAxis);
         float currentZ = Vector3.Dot(velocity, zAxis);
 
-        float acceleration = IsGrounded ? maxAcceleration : airControl;
+        float acceleration = IsGrounded ? maxAcceleration : maxAirAcceleration;
         float maxSpeedChange = acceleration * Time.deltaTime;
 
         float newX =
@@ -723,8 +820,8 @@ public class FirstPersonController : MonoBehaviour
 
     void ClearState()
     {
-        groundContactCount = 0;
-        contactNormal = Vector3.zero;
+        groundContactCount = steepContactCount = 0;
+        contactNormal = steepNormal = Vector3.zero;
     }
 
     private void HeadBob()
@@ -763,15 +860,6 @@ public class FirstPersonController : MonoBehaviour
         }
     }
 
-    private void OnEnable()
-    {
-        inputManager.Jump += Jump;
-    }
-
-    private void OnDisable()
-    {
-        inputManager.Jump -= Jump;
-    }
     // public override void Teleport (Transform fromPortal, Transform toPortal, Vector3 pos, Quaternion rot) {
     //     transform.position = pos;
     //     Vector3 eulerRot = rot.eulerAngles;
@@ -913,6 +1001,12 @@ public class FirstPersonControllerEditor : Editor
             EditorGUILayout.Slider(
                 new GUIContent("Max Ground Angel", "Determines how steep slopes the player can walk up."),
                 fpc.maxGroundAngle, 0f, 75f);
+
+        fpc.maxStairsAngle =
+            EditorGUILayout.Slider(
+                new GUIContent("Max Stairs Angel", "Determines how steep stairs the player can walk up."),
+                fpc.maxStairsAngle, 0f, 75f);
+
         fpc.groundSnapSpeed =
             EditorGUILayout.Slider(
                 new GUIContent("Ground Snap Speed", "Determines how fast the player will snap to the ground."),
@@ -924,6 +1018,8 @@ public class FirstPersonControllerEditor : Editor
 
         fpc.probeMask = EditorGUILayout.MaskField(new GUIContent("Probe Mask",
             "Determines what layer the player should consider ground"), fpc.probeMask, InternalEditorUtility.layers);
+        fpc.stairsMask = EditorGUILayout.MaskField(new GUIContent("Stairs Mask",
+            "Determines what layer the player should consider stairs"), fpc.stairsMask, InternalEditorUtility.layers);
 
         EditorGUILayout.Space();
 
@@ -1027,10 +1123,20 @@ public class FirstPersonControllerEditor : Editor
             EditorGUILayout.ToggleLeft(new GUIContent("Enable Jump", "Determines if the player is allowed to jump."),
                 fpc.enableJump);
 
+        fpc.jumpState = (FirstPersonController.JumpEnum) EditorGUILayout.EnumFlagsField(
+            new GUIContent("Enable Jump", "Determines if the player is allowed to jump."), fpc.jumpState);
+
         GUI.enabled = fpc.enableJump;
         fpc.jumpPower =
             EditorGUILayout.Slider(new GUIContent("Jump Power", "Determines how high the player will jump."),
                 fpc.jumpPower, .1f, 20f);
+        fpc.extraJumps =
+            (int) EditorGUILayout.Slider(
+                new GUIContent("Air Jumps", "Determines how many times you can jump in the air"),
+                fpc.extraJumps, 0, 5);
+        fpc.maxAirAcceleration = EditorGUILayout.Slider(
+            new GUIContent("Max Air Acceleration", "Determines how fast you can move in the air"),
+            fpc.maxAirAcceleration, 0, fpc.maxAcceleration);
         GUI.enabled = true;
 
         EditorGUILayout.Space();
