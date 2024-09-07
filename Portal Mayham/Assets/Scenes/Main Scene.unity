@@ -710,8 +710,9 @@ MonoBehaviour:
   sprintBarWidthPercent: 0.3
   sprintBarHeightPercent: 0.015
   enableJump: 1
+  wallJump: 0
   jumpPower: 5
-  airJumps: 1
+  extraJumps: 0
   maxAirAcceleration: 5
   enableCrouch: 1
   holdToCrouch: 1

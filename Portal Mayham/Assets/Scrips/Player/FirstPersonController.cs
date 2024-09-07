@@ -145,7 +145,7 @@ public class FirstPersonController : MonoBehaviour
     #region Jump
 
     public bool enableJump = true;
-    public JumpEnum jumpState = JumpEnum.Nothing;
+    public bool wallJump;
     public float jumpPower = 5f;
     public int extraJumps = 0;
     public float maxAirAcceleration = 5f;
@@ -256,14 +256,6 @@ public class FirstPersonController : MonoBehaviour
 
     #endregion
 
-    [Serializable, Flags]
-    public enum JumpEnum
-    {
-        Nothing,
-        WallJump,
-        AirJumps
-    }
-
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
@@ -311,6 +303,7 @@ public class FirstPersonController : MonoBehaviour
         inputManager.LockCursor(true);
         inputManager.DisablePlayerLook(false);
 
+        
         #region Sprint Bar
 
         sprintBarCG = GetComponentInChildren<CanvasGroup>();
@@ -592,6 +585,7 @@ public class FirstPersonController : MonoBehaviour
         if (!enableJump) return;
 
         Vector3 jumpDirection;
+        
         if (IsGrounded)
         {
             jumpDirection = contactNormal;
@@ -615,6 +609,8 @@ public class FirstPersonController : MonoBehaviour
             return;
         }
 
+        if (!wallJump) jumpDirection = Vector3.up;
+        
         stepsSinceLastJump = 0;
         if (stepsSinceLastJump > 1)
         {
@@ -1122,11 +1118,11 @@ public class FirstPersonControllerEditor : Editor
         fpc.enableJump =
             EditorGUILayout.ToggleLeft(new GUIContent("Enable Jump", "Determines if the player is allowed to jump."),
                 fpc.enableJump);
-
-        fpc.jumpState = (FirstPersonController.JumpEnum) EditorGUILayout.EnumFlagsField(
-            new GUIContent("Enable Jump", "Determines if the player is allowed to jump."), fpc.jumpState);
-
         GUI.enabled = fpc.enableJump;
+
+        fpc.wallJump = EditorGUILayout.ToggleLeft(new GUIContent("Wall Jump", 
+            "Options to enable wall jump."), fpc.wallJump);
+
         fpc.jumpPower =
             EditorGUILayout.Slider(new GUIContent("Jump Power", "Determines how high the player will jump."),
                 fpc.jumpPower, .1f, 20f);
