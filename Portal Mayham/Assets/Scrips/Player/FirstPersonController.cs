@@ -145,9 +145,9 @@ public class FirstPersonController : MonoBehaviour
     #region Jump
 
     public bool enableJump = true;
-    public bool wallJump;
+    public bool enableWallJump;
     public float jumpPower = 5f;
-    public int extraJumps = 0;
+    public int airJumps = 0;
     public float maxAirAcceleration = 5f;
 
     // Internal Variables
@@ -302,7 +302,6 @@ public class FirstPersonController : MonoBehaviour
     {
         inputManager.LockCursor(true);
         inputManager.DisablePlayerLook(false);
-
         
         #region Sprint Bar
 
@@ -369,14 +368,12 @@ public class FirstPersonController : MonoBehaviour
 
         if (enableZoom)
         {
-            // Changes isZoomed when key is pressed
             // Behavior for toggle zoom
             if (Input.GetKeyDown(KeyCode.Period) && !holdToZoom && !isSprinting)
             {
                 isZoomed = !isZoomed;
             }
 
-            // Changes isZoomed when key is pressed
             // Behavior for hold to zoom
             if (holdToZoom && !isSprinting)
             {
@@ -554,7 +551,7 @@ public class FirstPersonController : MonoBehaviour
                 groundContactCount += 1;
                 contactNormal += normal;
             }
-            else if (normal.y > -0.01f)
+            else if (normal.y > -0.01f && enableWallJump)
             {
                 steepContactCount += 1;
                 steepNormal += normal;
@@ -595,13 +592,14 @@ public class FirstPersonController : MonoBehaviour
             jumpDirection = steepNormal;
             jumpPhase = 0;
         }
-        else if (extraJumps > 0 && jumpPhase <= extraJumps)
+        else if (airJumps > 0 && jumpPhase <= airJumps)
         {
             if (jumpPhase == 0)
             {
                 jumpPhase = 1;
             }
 
+            velocity.y = 0;
             jumpDirection = contactNormal;
         }
         else
@@ -609,7 +607,7 @@ public class FirstPersonController : MonoBehaviour
             return;
         }
 
-        if (!wallJump) jumpDirection = Vector3.up;
+        if (!enableWallJump) jumpDirection = Vector3.up;
         
         stepsSinceLastJump = 0;
         if (stepsSinceLastJump > 1)
@@ -627,7 +625,6 @@ public class FirstPersonController : MonoBehaviour
         }
 
         velocity += jumpDirection * jumpSpeed;
-
 
         // When crouched and using toggle system, will uncrouch for a jump
         if (isCrouched && !holdToCrouch)
@@ -1120,16 +1117,16 @@ public class FirstPersonControllerEditor : Editor
                 fpc.enableJump);
         GUI.enabled = fpc.enableJump;
 
-        fpc.wallJump = EditorGUILayout.ToggleLeft(new GUIContent("Wall Jump", 
-            "Options to enable wall jump."), fpc.wallJump);
+        fpc.enableWallJump = EditorGUILayout.ToggleLeft(new GUIContent("Wall Jump", 
+            "Options to enable wall jump."), fpc.enableWallJump);
 
         fpc.jumpPower =
             EditorGUILayout.Slider(new GUIContent("Jump Power", "Determines how high the player will jump."),
                 fpc.jumpPower, .1f, 20f);
-        fpc.extraJumps =
+        fpc.airJumps =
             (int) EditorGUILayout.Slider(
                 new GUIContent("Air Jumps", "Determines how many times you can jump in the air"),
-                fpc.extraJumps, 0, 5);
+                fpc.airJumps, 0, 5);
         fpc.maxAirAcceleration = EditorGUILayout.Slider(
             new GUIContent("Max Air Acceleration", "Determines how fast you can move in the air"),
             fpc.maxAirAcceleration, 0, fpc.maxAcceleration);
