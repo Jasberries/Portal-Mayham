@@ -58,10 +58,17 @@ public static class CinemachineDefineChecker
 [RequireComponent(typeof(Rigidbody), typeof(CapsuleCollider))]
 public class FirstPersonController : MonoBehaviour
 {
+    #region General
+    
     // Internal Variables
     private Rigidbody rb;
     private CapsuleCollider playerCollider;
     private InputManager inputManager;
+    private Vector3 upAxis;
+    
+    #endregion
+
+   
 
     #region Camera Movement Variables
 
@@ -484,6 +491,7 @@ public class FirstPersonController : MonoBehaviour
         #region Movement
 
         Vector2 playerInput = inputManager.MoveValue;
+        upAxis = -Physics.gravity.normalized;
 
         if (inputManager.DisableAllMovement) return;
 
@@ -522,7 +530,7 @@ public class FirstPersonController : MonoBehaviour
         }
         else
         {
-            contactNormal = Vector3.up;
+            contactNormal = upAxis;
         }
     }
 
@@ -546,12 +554,13 @@ public class FirstPersonController : MonoBehaviour
         for (int i = 0; i < collision.contactCount; i++)
         {
             Vector3 normal = collision.GetContact(i).normal;
-            if (normal.y >= minDot)
+            float upDot = Vector3.Dot(upAxis, normal);
+            if (upDot  >= minDot)
             {
                 groundContactCount += 1;
                 contactNormal += normal;
             }
-            else if (normal.y > -0.01f && enableWallJump)
+            else if (upDot  > -0.01f && enableWallJump)
             {
                 steepContactCount += 1;
                 steepNormal += normal;
@@ -564,7 +573,8 @@ public class FirstPersonController : MonoBehaviour
         if (steepContactCount > 1)
         {
             steepNormal.Normalize();
-            if (steepNormal.y >= minGroundDotProduct)
+            float upDot = Vector3.Dot(upAxis, steepNormal);
+            if (upDot >= minGroundDotProduct)
             {
                 groundContactCount = 1;
                 contactNormal = steepNormal;
@@ -616,8 +626,8 @@ public class FirstPersonController : MonoBehaviour
         }
 
         jumpPhase++;
-        float jumpSpeed = Mathf.Sqrt(-2f * Physics.gravity.y * jumpPower);
-        jumpDirection = (jumpDirection + Vector3.up).normalized;
+        float jumpSpeed = Mathf.Sqrt(2f * Physics.gravity.magnitude * jumpPower);
+        jumpDirection = (jumpDirection + upAxis).normalized;
         float alignedSpeed = Vector3.Dot(velocity, jumpDirection);
         if (alignedSpeed > 0f)
         {
@@ -715,9 +725,14 @@ public class FirstPersonController : MonoBehaviour
         {
             return false;
         }
-
-        if (!Physics.Raycast(rb.position, Vector3.down, out RaycastHit hit, probeDistance, probeMask) ||
-            hit.normal.y < GetMinDot(hit.collider.gameObject.layer))
+        
+        if (!Physics.Raycast(rb.position, -upAxis, out RaycastHit hit, probeDistance, probeMask)) 
+        {
+            return false;
+        }
+        
+        float upDot = Vector3.Dot(upAxis, hit.normal);
+        if (upDot < GetMinDot(hit.collider.gameObject.layer))
         {
             return false;
         }
